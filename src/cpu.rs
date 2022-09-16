@@ -4,7 +4,22 @@ pub struct CPU {
     pub register_y: u8,
     pub status: u8,
     pub program_counter: u16,
-    memory: [u8; 0xffff],
+    pub memory: [u8; 0xffff],
+}
+
+#[derive(Debug)]
+#[allow(non_camel_case_types)]
+pub enum AddressingMode {
+    Immediate,
+    ZeroPage,
+    ZeroPage_X,
+    ZeroPage_Y,
+    Absolute,
+    Absolute_X,
+    Absolute_Y,
+    Indirect_X,
+    Indirect_Y,
+    Implied,
 }
 
 impl CPU {
@@ -27,7 +42,7 @@ impl CPU {
         self.memory[addr as usize] = data;
     }
 
-    fn mem_read_u16(&mut self, pos: u16) -> u16 {
+    fn mem_read_u16(&self, pos: u16) -> u16 {
         let lo = self.mem_read(pos) as u16;
         let hi = self.mem_read(pos + 1) as u16;
         (hi << 8) | (lo as u16)
@@ -57,6 +72,51 @@ impl CPU {
         self.load(program);
         self.reset();
         self.run();
+    }
+
+    fn get_operand_address(&self, mode: &AddressingMode) -> u16 {
+        match mode {
+            AddressingMode::Immediate => self.program_counter,
+            AddressingMode::ZeroPage => self.mem_read(self.program_counter) as u16,
+            AddressingMode::Absolute => self.mem_read_u16(self.program_counter), 
+            AddressingMode::ZeroPage_X => {
+                let pos = self.mem_read(self.program_counter);
+                let addr = pos.wrapping_add(self.register_y) as u16;
+                addr
+            },
+            AddressingMode::ZeroPage_Y => {
+                let pos = self.mem_read(self.program_counter);
+                let addr = pos.wrapping_add(self.register_x) as u16;
+                addr
+            },
+            AddressingMode::Absolute_X => {
+                let base = self.mem_read_u16(self.program_counter);
+                let addr = base.wrapping_add(self.register_x as u16);
+                addr
+            },
+            AddressingMode::Absolute_Y => {
+                let base = self.mem_read_u16(self.program_counter);
+                let addr = base.wrapping_add(self.register_y as u16);
+                addr
+            },
+            AddressingMode::Indirect_X => {
+                let base = self.mem_read(self.program_counter);
+                let ptr: u8 = (base as u8).wrapping_add(self.register_x);
+                let lo = self.mem_read(ptr as u16);
+                let hi = self.mem_read(ptr.wrapping_add(1) as u16);
+                (hi as u16) << 8 | (lo as u16)
+            }
+            AddressingMode::Indirect_Y => {
+                let base = self.mem_read(self.program_counter);
+                let ptr: u8 = (base as u8).wrapping_add(self.register_y);
+                let lo = self.mem_read(ptr as u16);
+                let hi = self.mem_read(ptr.wrapping_add(1) as u16);
+                (hi as u16) << 8 | (lo as u16)
+            }
+            AddressingMode::Implied => {
+                panic!("mode {:?} is not supported", mode);
+            }
+        }
     }
 
     fn update_processor_status(&mut self, condition: bool, flag: u8) {
@@ -114,8 +174,8 @@ impl CPU {
 
     // inc mem, reg x/y
     fn _inc() {}
-    fn inx(&mut self) {
-        self.register_x += 1;
+    fn inx(&mut self, _mode: &AddressingMode) {
+        self.register_x = self.register_x.wrapping_add(1);
         self.update_status_z_n(self.register_x);
     }
     fn _iny() {}
@@ -126,9 +186,11 @@ impl CPU {
     fn _jsr() {}
 
     // load reg a/x/y
-    fn lda(&mut self, value: u8) {
+    fn lda(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        let value = self.mem_read(addr);
         self.register_a = value;
-        self.update_status_z_n(self.register_a);
+        self.update_status_z_n(value);
     }
     fn _ldx(){}
     fn _ldy(){}
@@ -169,7 +231,7 @@ impl CPU {
     fn _stx() {}
     fn _sty() {}
 
-    fn tax(&mut self) {
+    fn tax(&mut self, _mode: &AddressingMode) {
         self.register_x = self.register_a;
         self.update_status_z_n(self.register_x);
     }
@@ -189,12 +251,15 @@ impl CPU {
                     return;
                 },
                 0xa9 => { // LDA
-                    let param = self.mem_read(self.program_counter);
+                    self.lda(&AddressingMode::Immediate);
                     self.program_counter += 1;
-                    self.lda(param);
                 },
-                0xaa => self.tax(),
-                0xe8 => self.inx(),
+                0xaa => { // TAX
+                    self.tax(&AddressingMode::Implied);
+                },
+                0xe8 => { // INX
+                    self.inx(&AddressingMode::Implied);
+                },
                 _ => todo!("opcode {:#02x}", opcode)
 
             }
