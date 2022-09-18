@@ -268,30 +268,39 @@ impl CPU {
             self.program_counter += 1;
 
             match opcode {
-                0x00 => { // BRK
+
+                /* BRK */
+                0x00 => {
                     return;
                 },
-                0xe8 => { // INX
+
+                /* INX */
+                0xe8 => {
                     self.inx(&op.mode);
                 },
 
-                0xa9 | 0xa5 | 0xb5 | 0xad | 0xbd | 0xb9 | 0xa1 | 0xb1 => { // LDA
+                /* LDA */
+                0xa9 | 0xa5 | 0xb5 | 0xad | 0xbd | 0xb9 | 0xa1 | 0xb1 => {
                     self.lda(&op.mode);
                 },
 
-                0xa2 | 0xa6 | 0xb6 | 0xae | 0xbe => { // LDX
-                    self.ldx(&op.mode)
-                }
+                /* LDX */
+                0xa2 | 0xa6 | 0xb6 | 0xae | 0xbe => {
+                    self.ldx(&op.mode);
+                },
 
+                /* LDY */
                 0xa0 | 0xa4 | 0xb4 | 0xac | 0xbc => {
-                    self.ldy(&op.mode)
-                }
+                    self.ldy(&op.mode);
+                },
 
+                /* TAX */
                 0xaa => {
                     self.tax(&op.mode);
                 },
+
                 _ => todo!("opcode {:#02x}", opcode)
-            }
+            };
 
             self.program_counter += op.cycles as u16 - 1;
         }
