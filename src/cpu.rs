@@ -245,9 +245,18 @@ impl CPU {
     fn _sei() {}
 
     // store reg a/x/y
-    fn _sta() {}
-    fn _stx() {}
-    fn _sty() {}
+    fn sta(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        self.mem_write(addr, self.register_a);
+    }
+    fn stx(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        self.mem_write(addr, self.register_x);
+    }
+    fn sty(&mut self, mode: &AddressingMode) {
+        let addr = self.get_operand_address(mode);
+        self.mem_write(addr, self.register_y);
+    }
 
     fn tax(&mut self, _mode: &AddressingMode) {
         self.register_x = self.register_a;
@@ -292,6 +301,21 @@ impl CPU {
                 /* LDY */
                 0xa0 | 0xa4 | 0xb4 | 0xac | 0xbc => {
                     self.ldy(&op.mode);
+                },
+
+                /* STA */
+                0x85 | 0x95 | 0x8d | 0x9d | 0x99 | 0x81 | 0x91 => {
+                    self.sta(&op.mode);
+                },
+
+                /* STX */
+                0x86 | 0x96 | 0x8e => {
+                    self.stx(&op.mode);
+                },
+
+                /* STY */
+                0x84 | 0x94 | 0x8c => {
+                    self.sty(&op.mode);
                 },
 
                 /* TAX */
@@ -598,5 +622,191 @@ mod test {
         assert_eq!(cpu.register_x, 0x05);
         assert!(cpu.status & 0b0000_0010 == 0);
         assert!(cpu.status & 0b1000_0000 == 0);
+    }
+
+    #[test]
+    fn test_0x81_sta_indirect_x_store_data() {
+        let mut cpu = CPU::new();
+        cpu.mem_write_u16(0x0014, 0x7f77);
+        cpu.load_and_run(vec![
+            0xa9, 0x05, // LDA #$05
+            0xa2, 0x10, // LDX #$10
+            0x81, 0x04, // STA($04,X)
+            0x00,       // BRK
+        ]);
+        let value = cpu.mem_read(0x7f77);
+        assert_eq!(cpu.register_a, 0x05);
+        assert_eq!(cpu.register_x, 0x10);
+        assert_eq!(value, 0x05);
+    }
+
+    #[test]
+    fn test_0x84_sty_zeropage_store_data() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![
+            0xa0, 0x05, // LDY #$05
+            0x84, 0x77, // STY $77
+            0x00,       // BRK
+        ]);
+        let value = cpu.mem_read(0x0077);
+        assert_eq!(cpu.register_y, 0x05);
+        assert_eq!(value, 0x05);
+    }
+
+    #[test]
+    fn test_0x85_sta_zeropage_store_data() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![
+            0xa9, 0x05, // LDA #$05
+            0x85, 0x77, // STA $77
+            0x00,       // BRK
+        ]);
+        let value = cpu.mem_read(0x0077);
+        assert_eq!(cpu.register_a, 0x05);
+        assert_eq!(value, 0x05);
+    }
+
+    #[test]
+    fn test_0x86_stx_zeropage_store_data() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![
+            0xa2, 0x05, // LDX #$05
+            0x86, 0x77, // STX $77
+            0x00,       // BRK
+        ]);
+        let value = cpu.mem_read(0x0077);
+        assert_eq!(cpu.register_x, 0x05);
+        assert_eq!(value, 0x05);
+    }
+
+    #[test]
+    fn test_0x8c_sty_absolute_store_data() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![
+            0xa0, 0x05,       // LDY #$05
+            0x8c, 0xff, 0x77, // STY $77ff
+            0x00,             // BRK
+        ]);
+        let value = cpu.mem_read(0x77ff);
+        assert_eq!(cpu.register_y, 0x05);
+        assert_eq!(value, 0x05);
+    }
+
+    #[test]
+    fn test_0x8d_sta_absolute_store_data() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![
+            0xa9, 0x05,       // LDA #$05
+            0x8d, 0xff, 0x77, // STA $77ff
+            0x00,             // BRK
+        ]);
+        let value = cpu.mem_read(0x77ff);
+        assert_eq!(cpu.register_a, 0x05);
+        assert_eq!(value, 0x05);
+    }
+
+    #[test]
+    fn test_0x8e_stx_absolute_store_data() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![
+            0xa2, 0x05,       // LDX #$05
+            0x8e, 0xff, 0x77, // STX $77ff
+            0x00,             // BRK
+        ]);
+        let value = cpu.mem_read(0x77ff);
+        assert_eq!(cpu.register_x, 0x05);
+        assert_eq!(value, 0x05);
+    }
+
+    #[test]
+    fn test_0x91_sta_indirect_y_store_data() {
+        let mut cpu = CPU::new();
+        cpu.mem_write_u16(0x0004, 0x7f67);
+        cpu.load_and_run(vec![
+            0xa9, 0x05, // LDA #$05
+            0xa0, 0x10, // LDY #$10
+            0x91, 0x04, // STA($04),Y
+            0x00,       // BRK
+        ]);
+        let base = cpu.mem_read_u16(0x0004);
+        let value = cpu.mem_read(0x7f77);
+        assert_eq!(base, 0x7f67);
+        assert_eq!(cpu.register_a, 0x05);
+        assert_eq!(cpu.register_y, 0x10);
+        assert_eq!(value, 0x05);
+    }
+
+    #[test]
+    fn test_0x94_sty_zeropage_x_store_data() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![
+            0xa0, 0x05, // LDY #$05
+            0xa2, 0x10, // LDX #$10
+            0x94, 0x0f, // STA $0f,X
+            0x00,       // BRK
+        ]);
+        let value = cpu.mem_read(0x001f);
+        assert_eq!(cpu.register_y, 0x05);
+        assert_eq!(cpu.register_x, 0x10);
+        assert_eq!(value, 0x05);
+    }
+
+    #[test]
+    fn test_0x95_sta_zeropage_x_store_data() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![
+            0xa9, 0x05, // LDA #$05
+            0xa2, 0x10, // LDX #$10
+            0x95, 0x0f, // STA $0f,X
+            0x00,       // BRK
+        ]);
+        let value = cpu.mem_read(0x001f);
+        assert_eq!(cpu.register_a, 0x05);
+        assert_eq!(cpu.register_x, 0x10);
+        assert_eq!(value, 0x05);
+    }
+
+    #[test]
+    fn test_0x96_stx_zeropage_y_store_data() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![
+            0xa2, 0x05, // LDX #$05
+            0xa0, 0x10, // LDY #$10
+            0x96, 0x0f, // STX $0f,Y
+            0x00,       // BRK
+        ]);
+        let value = cpu.mem_read(0x001f);
+        assert_eq!(cpu.register_x, 0x05);
+        assert_eq!(cpu.register_y, 0x10);
+        assert_eq!(value, 0x05);
+    }
+
+    #[test]
+    fn test_0x99_sta_absolute_y_store_data() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![
+            0xa9, 0x05,       // LDA #$05
+            0xa0, 0x10,       // LDY #$10
+            0x99, 0x07, 0x77, // STA $7707,Y
+            0x00,             // BRK
+        ]);
+        let value = cpu.mem_read(0x7717);
+        assert_eq!(cpu.register_a, 0x05);
+        assert_eq!(value, 0x05);
+    }
+
+    #[test]
+    fn test_0x9d_sta_absolute_x_store_data() {
+        let mut cpu = CPU::new();
+        cpu.load_and_run(vec![
+            0xa9, 0x05,       // LDA #$05
+            0xa2, 0x10,       // LDX #$10
+            0x9d, 0x07, 0x77, // STA $7707,X
+            0x00,             // BRK
+        ]);
+        let value = cpu.mem_read(0x7717);
+        assert_eq!(cpu.register_a, 0x05);
+        assert_eq!(cpu.register_x, 0x10);
+        assert_eq!(value, 0x05);
     }
 }
