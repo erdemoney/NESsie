@@ -1,3 +1,6 @@
+use crate::ops;
+use std::collections::HashMap;
+
 pub struct CPU {
     pub register_a: u8,
     pub register_x: u8,
@@ -19,6 +22,9 @@ pub enum AddressingMode {
     Absolute_Y,
     Indirect_X,
     Indirect_Y,
+    Indirect,
+    Accumulator,
+    Relative,
     Implied,
 }
 
@@ -113,7 +119,7 @@ impl CPU {
                 let hi = self.mem_read(ptr.wrapping_add(1) as u16);
                 (hi as u16) << 8 | (lo as u16)
             }
-            AddressingMode::Implied => {
+            _ => {
                 panic!("mode {:?} is not supported", mode);
             }
         }
@@ -242,27 +248,30 @@ impl CPU {
     fn _tya() {}
 
     pub fn run(&mut self) {
+        let ref opcodes: HashMap<u8, &'static ops::OpCode> = *ops::OPCODES_MAP;
+
         loop {
             let opcode = self.mem_read(self.program_counter);
+            let op = opcodes.get(&opcode).unwrap();
             self.program_counter += 1;
 
             match opcode {
                 0x00 => { // BRK
                     return;
                 },
-                0xa9 => { // LDA
-                    self.lda(&AddressingMode::Immediate);
-                    self.program_counter += 1;
+                0xe8 => {
+                    self.inx(&op.mode);
                 },
-                0xaa => { // TAX
-                    self.tax(&AddressingMode::Implied);
+                0xa9 | 0xa5 | 0xb5 | 0xad | 0xbd | 0xb9 | 0xa1 | 0xb1 => {
+                    self.lda(&op.mode);
                 },
-                0xe8 => { // INX
-                    self.inx(&AddressingMode::Implied);
+                0xaa => {
+                    self.tax(&op.mode);
                 },
                 _ => todo!("opcode {:#02x}", opcode)
-
             }
+
+            self.program_counter += op.cycles as u16 - 1;
         }
     }
 }
